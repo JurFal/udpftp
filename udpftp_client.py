@@ -85,12 +85,16 @@ def main():
             print('unexpected response', file=sys.stderr)
             sys.exit(2)
         parts = pkt.payload.decode().strip().split()
-        # expect: SIZE <n> MD5 <hex> OK
-        if len(parts) < 6 or parts[0] != 'SIZE' or parts[2] != 'MD5' or parts[4] != 'OK':
-            print('bad server reply', file=sys.stderr)
+        # expect: SIZE <n> MD5 <hex> OK  (5 tokens)
+        if len(parts) >= 5 and parts[0] == 'SIZE' and parts[2] == 'MD5' and parts[4] == 'OK':
+            total_size = int(parts[1])
+            server_md5 = parts[3]
+        elif parts and parts[0] == 'ERR':
+            print('server error: ' + ' '.join(parts), file=sys.stderr)
             sys.exit(3)
-        total_size = int(parts[1])
-        server_md5 = parts[3]
+        else:
+            print('bad server reply: ' + ' '.join(parts), file=sys.stderr)
+            sys.exit(3)
         rel = Reliability(strategy=args.algo, mss=args.mss)
         data = rel.recv(sock, addr, total_size, send_adv_window=args.window)
         local_md5 = md5_bytes(data)
