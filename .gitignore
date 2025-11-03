@@ -1,4 +1,6 @@
 furina_avatar.jpg
-/__pycache__
-**/__pycache__
+**/*.pyc
+*.pyc
 /storage
+udpftp/__pycache__
+/__pycache__

@@ -4,6 +4,7 @@ import os
 import socket
 import threading
 from collections import deque
+import time
 
 from udpftp.protocol import Packet, make_ctrl
 from udpftp.reliability import Reliability
@@ -37,6 +38,8 @@ class Session:
         self.queue = deque()
         self.cv = threading.Condition()
         self.thread = threading.Thread(target=self.run, daemon=True)
+        self.bytes_recv_total = 0
+        self.bytes_sent_total = 0
 
     def start(self):
         self.thread.start()
@@ -70,16 +73,25 @@ class Session:
                         while not self.session.queue:
                             self.session.cv.wait()
                         raw = self.session.queue.popleft()
+                        self.session.bytes_recv_total += len(raw)
                         return raw, self.session.addr
                 def sendto(self, data, addr):
                     self.real_sock.sendto(data, addr)
             qs = QueueSocket(self.sock, self)
+            t0 = time.monotonic()
             data = self.rel.recv(qs, self.addr, total_size=self.size, send_adv_window=self.window)
+            t1 = time.monotonic()
             with open(target_path, 'wb') as f:
                 f.write(data)
             server_md5 = md5_bytes(data)
             self.sock.sendto(make_ctrl(server_md5).pack(), self.addr)
             log('SERVER', f"Upload stored {target_path}, MD5={server_md5}")
+            # Metrics for upload (server receiving)
+            duration_s = max(t1 - t0, 1e-9)
+            file_size = self.size
+            throughput_bps = file_size / duration_s
+            utilization = file_size / max(self.bytes_recv_total, 1)
+            log('METRIC', f"UPLOAD name={self.remote_name} size={file_size} bytes_recv_total={self.bytes_recv_total} duration={duration_s:.3f}s throughput={throughput_bps:.2f}B/s utilization={utilization:.4f}")
         else:
             full_path = target_path
             if not os.path.exists(full_path):
@@ -90,8 +102,25 @@ class Session:
             md5 = md5_bytes(data)
             size = len(data)
             self.sock.sendto(make_ctrl(f"SIZE {size} MD5 {md5} OK").pack(), self.addr)
-            stats = self.rel.send(self.sock, self.addr, data, self.cc, recv_packet=self.recv_packet_cb, recv_adv_window=self.window)
+            # Wrap socket to count bytes sent by server
+            class CountingSocket:
+                def __init__(self, real_sock, session):
+                    self.real_sock = real_sock
+                    self.session = session
+                def sendto(self, data, addr):
+                    self.session.bytes_sent_total += len(data)
+                    return self.real_sock.sendto(data, addr)
+            cs = CountingSocket(self.sock, self)
+            t0 = time.monotonic()
+            stats = self.rel.send(cs, self.addr, data, self.cc, recv_packet=self.recv_packet_cb, recv_adv_window=self.window)
+            t1 = time.monotonic()
             log('SERVER', f"Download {self.remote_name} done: packets={stats['packets']} duration={stats['duration_s']:.2f}s")
+            # Metrics for download (server sending)
+            duration_s = stats.get('duration_s', max(t1 - t0, 1e-9))
+            file_size = size
+            throughput_bps = file_size / duration_s
+            utilization = file_size / max(self.bytes_sent_total, 1)
+            log('METRIC', f"DOWNLOAD name={self.remote_name} size={file_size} bytes_sent_total={self.bytes_sent_total} duration={duration_s:.3f}s throughput={throughput_bps:.2f}B/s utilization={utilization:.4f}")
 
 
 def main():
