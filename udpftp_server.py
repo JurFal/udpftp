@@ -40,6 +40,8 @@ class Session:
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.bytes_recv_total = 0
         self.bytes_sent_total = 0
+        self.algo = algo
+        self.cc_name = cc_name
 
     def start(self):
         self.thread.start()
@@ -79,20 +81,29 @@ class Session:
                     self.real_sock.sendto(data, addr)
             qs = QueueSocket(self.sock, self)
             t0 = time.monotonic()
-            data = self.rel.recv(qs, self.addr, total_size=self.size, send_adv_window=self.window)
-            t1 = time.monotonic()
-            with open(target_path, 'wb') as f:
-                f.write(data)
-            server_md5 = md5_bytes(data)
-            self.sock.sendto(make_ctrl(server_md5).pack(), self.addr)
-            log('SERVER', f"Upload stored {target_path}, MD5={server_md5}")
-            # Metrics for upload (server receiving)
-            duration_s = max(t1 - t0, 1e-9)
-            file_size = self.size
-            throughput_bps = file_size / duration_s
-            utilization = file_size / max(self.bytes_recv_total, 1)
-            log('METRIC', f"UPLOAD name={self.remote_name} size={file_size} bytes_recv_total={self.bytes_recv_total} duration={duration_s:.3f}s throughput={throughput_bps:.2f}B/s utilization={utilization:.4f}")
+            try:
+                data = self.rel.recv(qs, self.addr, total_size=self.size, send_adv_window=self.window)
+                t1 = time.monotonic()
+                with open(target_path, 'wb') as f:
+                    f.write(data)
+                server_md5 = md5_bytes(data)
+                self.sock.sendto(make_ctrl(server_md5).pack(), self.addr)
+                log('SERVER', f"Upload stored {target_path}, MD5={server_md5}")
+                success = True
+            except Exception as e:
+                t1 = time.monotonic()
+                log('ERROR', f"Upload failed for {self.remote_name}: {e}")
+                success = False
+            finally:
+                # Always record metrics, even on failure
+                duration_s = max(t1 - t0, 1e-9)
+                file_size = self.size
+                throughput_bps = file_size / duration_s if success else 0
+                utilization = file_size / max(self.bytes_recv_total, 1) if success else 0
+                status = "SUCCESS" if success else "FAILED"
+                log('METRIC', f"UPLOAD {status} name={self.remote_name} size={file_size} bytes_recv_total={self.bytes_recv_total} duration={duration_s:.3f}s throughput={throughput_bps:.2f}B/s utilization={utilization:.4f}")
         else:
+            # Download
             full_path = target_path
             if not os.path.exists(full_path):
                 self.sock.sendto(make_ctrl('ERR NOFILE').pack(), self.addr)
@@ -112,16 +123,25 @@ class Session:
                     return self.real_sock.sendto(data, addr)
             cs = CountingSocket(self.sock, self)
             t0 = time.monotonic()
-            stats = self.rel.send(cs, self.addr, data, self.cc, recv_packet=self.recv_packet_cb, recv_adv_window=self.window)
-            t1 = time.monotonic()
-            log('SERVER', f"Download {self.remote_name} done: packets={stats['packets']} duration={stats['duration_s']:.2f}s")
-            # Metrics for download (server sending)
-            duration_s = stats.get('duration_s', max(t1 - t0, 1e-9))
-            file_size = size
-            throughput_bps = file_size / duration_s
-            utilization = file_size / max(self.bytes_sent_total, 1)
-            log('METRIC', f"DOWNLOAD name={self.remote_name} size={file_size} bytes_sent_total={self.bytes_sent_total} duration={duration_s:.3f}s throughput={throughput_bps:.2f}B/s utilization={utilization:.4f}")
-
+            try:
+                stats = self.rel.send(cs, self.addr, data, self.cc, recv_packet=self.recv_packet_cb, recv_adv_window=self.window)
+                t1 = time.monotonic()
+                log('SERVER', f"Download {self.remote_name} done: packets={stats['packets']} duration={stats['duration_s']:.2f}s")
+                success = True
+                duration_from_stats = stats.get('duration_s', max(t1 - t0, 1e-9))
+            except Exception as e:
+                t1 = time.monotonic()
+                log('ERROR', f"Download failed for {self.remote_name}: {e}")
+                success = False
+                duration_from_stats = max(t1 - t0, 1e-9)
+            finally:
+                # Always record metrics, even on failure
+                duration_s = duration_from_stats
+                file_size = size
+                throughput_bps = file_size / duration_s if success else 0
+                utilization = file_size / max(self.bytes_sent_total, 1) if success else 0
+                status = "SUCCESS" if success else "FAILED"
+                log('METRIC', f"DOWNLOAD {status} name={self.remote_name} size={file_size} bytes_sent_total={self.bytes_sent_total} duration={duration_s:.3f}s throughput={throughput_bps:.2f}B/s utilization={utilization:.4f}")
 
 def main():
     args = parse_args()
