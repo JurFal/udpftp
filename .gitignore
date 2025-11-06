@@ -1,6 +1,8 @@
 **/*.pyc
 *.pyc
 /storage
-udpftp/__pycache__
+**/__pycache__
 /__pycache__
 *.jpg
+*.png
+.DS_Store

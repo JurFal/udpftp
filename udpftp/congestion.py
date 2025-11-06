@@ -46,33 +46,44 @@ class Vegas(CongestionControl):
         self.alpha = alpha
         self.beta = beta
         self.base_rtt_ms = None  # type: float | None
+        self.ema_rtt_ms = None   # smoothed RTT
+        self.rtt_ema_weight = 0.9
 
     def on_ack(self, rtt_ms: float, bytes_acked: int) -> None:
         # Track minimum RTT as base RTT
-        if rtt_ms is not None:
+        if rtt_ms is not None and rtt_ms > 0:
             if self.base_rtt_ms is None:
                 self.base_rtt_ms = rtt_ms
             else:
                 self.base_rtt_ms = min(self.base_rtt_ms, rtt_ms)
-        if self.base_rtt_ms is None or rtt_ms is None or rtt_ms <= 0:
-            # Fallback: behave like Reno slow start until we have RTT
+            # EMA smoothing for RTT
+            if self.ema_rtt_ms is None:
+                self.ema_rtt_ms = rtt_ms
+            else:
+                w = self.rtt_ema_weight
+                self.ema_rtt_ms = w * self.ema_rtt_ms + (1.0 - w) * rtt_ms
+
+        # Fallback: behave like Reno slow start until we have RTT
+        if self.base_rtt_ms is None or self.ema_rtt_ms is None:
             if self.cwnd < self.ssthresh:
                 self.cwnd += 1.0
             else:
                 self.cwnd += 1.0 / max(self.cwnd, 1.0)
             return
-        # Estimate expected vs actual throughput
-        # expected = cwnd / base_rtt; actual = cwnd / rtt
-        # diff = expected - actual = cwnd * (1/base_rtt - 1/rtt)
-        expected = self.cwnd / self.base_rtt_ms
-        actual = self.cwnd / rtt_ms
-        diff = expected - actual
-        # Adjust cwnd based on diff thresholds
-        if diff < self.alpha:
-            self.cwnd += 1.0  # underutilized, increase
-        elif diff > self.beta:
-            self.cwnd -= 1.0  # overutilized, decrease
+
+        # Vegas diff in 'packets' (normalize by RTT): diff = cwnd * (1 - base_rtt / rtt)
+        rtt_use = max(self.ema_rtt_ms, 1e-6)
+        diff_packets = self.cwnd * (1.0 - (self.base_rtt_ms / rtt_use))
+
+        # Adjust cwnd gently: ~1 packet per RTT (approximate via 1/cwnd per ACK)
+        if diff_packets < self.alpha:
+            # underutilized, increase
+            self.cwnd += 1.0 / max(self.cwnd, 1.0)
+        elif diff_packets > self.beta:
+            # overutilized, decrease
+            self.cwnd -= 1.0 / max(self.cwnd, 1.0)
         # else keep cwnd
+
         if self.cwnd < 1.0:
             self.cwnd = 1.0
         if self.cwnd > self.max_cwnd:

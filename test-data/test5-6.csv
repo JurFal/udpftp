@@ -1,0 +1,5 @@
+test_id, env, mode, algo_trans, algo_cong, loss_rate, delay, size, time, recv_total, throughput, traffic_util,
+17, mock, download, SR, Reno, 5%, 10ms 1ms 10%, 1410801, 10.883s, 1502652, 129632.90B/s, 0.9389,
+18, mock, download, SR, Reno, 5%, 10ms 1ms 30%, 1410801, 17.035s, 1527072, 82818.84B/s, 0.9239,
+19, mock, download, SR, Reno, 5%, 50ms 1ms 10%, 1410801, 21.133s, 1501431, 66576.95B/s, 0.9396,
+20, mock, download, SR, Reno, 5%, 10ms 5ms 10%, 1410801, 15.435s, 1524630, 91400.29B/s, 0.9253,
