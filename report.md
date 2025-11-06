@@ -89,8 +89,6 @@
 
 - 发送端在客户端侧使用 `select.select([sock], ...)`，因此自定义套接字包装器必须实现 `fileno()`；代码已在客户端与服务端的包装器中补充该方法，避免运行时错误。
 
----
-
 ### 拥塞控制模块解释
 
 文件：`udpftp/congestion.py`
@@ -129,3 +127,45 @@ Vegas 实现：
 - `ssthresh` 初值影响慢启动阶段长度；可根据网络容量调优。
 - `alpha/beta` 影响 Vegas 的敏感度；丢包率高时适当增大 `beta` 可减少过度收缩。
 - `timeout_ms` 应与网络 RTT 量级匹配，过小会导致频繁重传，过大则恢复慢。
+
+此次实验中，参数均取定值。
+
+## 实验结果与分析
+
+原始数据位于 `/test-data` 中的 `test1-2.csv`、`test3-4.csv`、`test5-6.csv`、`test7-8.csv`、`test9-10.csv`。
+
+1. 规律：模拟环境下上传文件丢包率越高，有效吞吐量越低，基本成反比关系；SR 算法的有效吞吐量远大于 GBN 算法。
+![test1_throughput](test-data/test1_throughput.png)
+
+2. 规律：模拟环境下上传文件丢包率变化时，流量利用率基本不变；SR 算法的流量利用率远大于 GBN 算法，且维持在稳定值。
+![test2_traffic_util](test-data/test2_traffic_util.png)
+
+3. 规律：模拟环境下下载文件丢包率越高，有效吞吐量越低，基本成反比关系；Reno 算法的有效吞吐量大于 Vegas 算法。
+![test3_throughput](test-data/test3_throughput.png)
+
+4. 规律：模拟环境下下载文件丢包率变化时，流量利用率下降；Reno 算法的流量利用率稍稍大于 Vegas 算法，且维持在稳定值。
+![test4_traffic_util](test-data/test4_traffic_util.png)
+
+5. 规律：模拟环境下，延迟、抖动、前后包延迟相关系数的增加均会导致有效吞吐量下降；Reno 算法的有效吞吐率下降较 Vegas 算法明显，但是 Reno 算法在各条件下表现好于 Vegas 算法。
+![test5_throughput](test-data/test5_throughput.png)
+
+6. 规律：模拟环境下，延迟、抖动、前后包延迟相关系数的变化与流量利用率无关。
+![test6_traffic_util](test-data/test6_traffic_util.png)
+
+7. 规律：真实上传文件时，对 SR 算法来说文件大小越大，有效吞吐量越高，而对 GBN 算法来说反之。（对某个 1.4 MB 左右大小的文件存在例外情况）
+![test7_throughput](test-data/test7_throughput.png)
+
+8. 规律：真实上传文件时，对 SR 算法来说流量利用率的变化与文件大小无关；对 GBN 算法来说，文件大小越大流量利用率越低。（依然对某个 1.4 MB 左右大小的文件存在例外情况）
+![test8_traffic_util](test-data/test8_traffic_util.png)
+
+9. 规律：真实下载文件时，Reno 算法有效吞吐量在文件大小变大时先变大后变小；Vegas 算法有效吞吐量在文件大小变大时先变小后变大；总体上 Reno 算法有效吞吐量大于 Vegas 算法。
+![test9_throughput](test-data/test9_throughput.png)
+
+10. 规律：真实下载文件时，Reno 算法流量利用率在文件大小变化时波动但是总体持平；Vegas 算法流量利用率在文件大小变大时略微变大；总体上 Reno 算法流量利用率稍大于 Vegas 算法。
+![test10_traffic_util](test-data/test10_traffic_util.png)
+
+总体规律：
+
+- SR 重传策略和基于丢包的 Reno 拥塞控制算法组合显著优于其他组合（SR 策略优于 GBN 策略，Reno 算法优于 Vegas 算法）；
+- 有效吞吐量由算法、网络环境和文件大小因素共同决定，与网络环境（尤其是丢包率）强相关；
+- 流量利用率一般来说由算法决定，网络环境和文件大小导致其波动，没有决定性影响。

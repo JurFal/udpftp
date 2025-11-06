@@ -52,6 +52,16 @@ class CountingSocket:
     def setsockopt(self, *args):
         return self.real_sock.setsockopt(*args)
 
+    # Ensure compatibility with select.select and timeout APIs
+    def fileno(self):
+        return self.real_sock.fileno()
+
+    def settimeout(self, value):
+        return self.real_sock.settimeout(value)
+
+    def gettimeout(self):
+        return self.real_sock.gettimeout()
+
 
 def main():
     args = parse_args()
