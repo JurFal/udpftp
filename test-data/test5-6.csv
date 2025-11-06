@@ -3,3 +3,7 @@ test_id, env, mode, algo_trans, algo_cong, loss_rate, delay, size, time, recv_to
 18, mock, download, SR, Reno, 5%, 10ms 1ms 30%, 1410801, 17.035s, 1527072, 82818.84B/s, 0.9239,
 19, mock, download, SR, Reno, 5%, 50ms 1ms 10%, 1410801, 21.133s, 1501431, 66576.95B/s, 0.9396,
 20, mock, download, SR, Reno, 5%, 10ms 5ms 10%, 1410801, 15.435s, 1524630, 91400.29B/s, 0.9253,
+37, mock, download, SR, Vegas, 5%, 10ms 1ms 10%, 1410801, 17.889s, 1516083, 78864.19B/s, 0.9306,
+38, mock, download, SR, Vegas, 5%, 10ms 1ms 30%, 1410801, 18.280s, 1512420, 77176.89B/s, 0.9328,
+39, mock, download, SR, Vegas, 5%, 50ms 1ms 10%, 1410801, 35.235s, 1518525, 40039.42B/s, 0.9291,
+40, mock, download, SR, Vegas, 5%, 10ms 5ms 10%, 1410801, 22.001s, 1527072, 64124.34B/s, 0.9239,
